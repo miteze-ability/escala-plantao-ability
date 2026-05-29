@@ -84,8 +84,12 @@ function ColunaSetor({ setor, entradas }) {
     }).sort((a,b) => a.dataInicio.localeCompare(b.dataInicio) || a.horaInicio.localeCompare(b.horaInicio))
   }
 
-  const capitalGroups = agruparPorHorario(entradas.filter(e => e.localidade === 'Capital'))
-  const interiorGroups = agruparPorHorario(entradas.filter(e => e.localidade === 'Interior'))
+  // Identifica dinamicamente todas as localidades presentes no setor
+  const localidadesPresentes = [...new Set(entradas.map(e => e.localidade).filter(Boolean))].sort()
+  const gruposPorLocalidade = localidadesPresentes.map(loc => ({
+    localidade: loc,
+    grupos: agruparPorHorario(entradas.filter(e => e.localidade === loc))
+  }))
 
   const totalColabs = entradas.reduce((acc, e) => {
     const c = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
@@ -142,49 +146,38 @@ function ColunaSetor({ setor, entradas }) {
           </div>
         )}
 
-        {/* PAINEL 2: CAPITAL */}
-        {capitalGroups.length > 0 && (
-          <div className="rounded-xl border p-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #18181b 0%, #1e3a8a20 100%)', borderColor: '#1e3a8a80' }}>
-            <div className="flex items-center gap-2 mb-4 border-b border-blue-900/50 pb-3">
-              <span className="bg-blue-600 text-white text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Capital</span>
-            </div>
-            <div className="flex flex-col gap-5">
-              {capitalGroups.map((g, i) => (
-                <div key={i} className="bg-black/20 rounded-lg p-3 border border-blue-900/30">
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex flex-wrap gap-2 items-center">
-                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">📅 {formatDate(g.dataInicio)} {g.dataFim && g.dataFim !== g.dataInicio ? `a ${formatDate(g.dataFim)}` : ''}</span>
-                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">⏰ {g.horaInicio} → {g.horaFim}</span>
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {g.cols.map((c, j) => <span key={j} className="text-zinc-200 font-semibold text-[13px]">• {c}</span>)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* PAINÉIS DE LOCALIDADE (Dinâmicos) */}
+        {gruposPorLocalidade.map(({ localidade, grupos }, index) => {
+          // Cores dinâmicas simples baseadas no index para não ficar tudo igual
+          const colors = [
+            { bg: '#1e3a8a20', border: '#1e3a8a80', pill: 'bg-blue-600', pillBorder: 'border-blue-900/50', innerBg: 'bg-black/20', innerBorder: 'border-blue-900/30' },
+            { bg: '#14532d20', border: '#14532d80', pill: 'bg-green-600', pillBorder: 'border-green-900/50', innerBg: 'bg-black/20', innerBorder: 'border-green-900/30' },
+            { bg: '#4c1d9520', border: '#4c1d9580', pill: 'bg-purple-600', pillBorder: 'border-purple-900/50', innerBg: 'bg-black/20', innerBorder: 'border-purple-900/30' },
+            { bg: '#7f1d1d20', border: '#7f1d1d80', pill: 'bg-red-600', pillBorder: 'border-red-900/50', innerBg: 'bg-black/20', innerBorder: 'border-red-900/30' },
+          ]
+          const c = colors[index % colors.length]
 
-        {/* PAINEL 3: INTERIOR */}
-        {interiorGroups.length > 0 && (
-          <div className="rounded-xl border p-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #18181b 0%, #14532d20 100%)', borderColor: '#14532d80' }}>
-            <div className="flex items-center gap-2 mb-4 border-b border-green-900/50 pb-3">
-              <span className="bg-green-600 text-white text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Interior</span>
-            </div>
-            <div className="flex flex-col gap-5">
-              {interiorGroups.map((g, i) => (
-                <div key={i} className="bg-black/20 rounded-lg p-3 border border-green-900/30">
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex flex-wrap gap-2 items-center">
-                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">📅 {formatDate(g.dataInicio)} {g.dataFim && g.dataFim !== g.dataInicio ? `a ${formatDate(g.dataFim)}` : ''}</span>
-                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">⏰ {g.horaInicio} → {g.horaFim}</span>
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {g.cols.map((c, j) => <span key={j} className="text-zinc-200 font-semibold text-[13px]">• {c}</span>)}
+          return (
+            <div key={localidade} className="rounded-xl border p-4 shadow-lg" style={{ background: `linear-gradient(135deg, #18181b 0%, ${c.bg} 100%)`, borderColor: c.border }}>
+              <div className={`flex items-center gap-2 mb-4 border-b ${c.pillBorder} pb-3`}>
+                <span className={`${c.pill} text-white text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest`}>{localidade}</span>
+              </div>
+              <div className="flex flex-col gap-5">
+                {grupos.map((g, i) => (
+                  <div key={i} className={`${c.innerBg} rounded-lg p-3 border ${c.innerBorder}`}>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex flex-wrap gap-2 items-center">
+                      <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">📅 {formatDate(g.dataInicio)} {g.dataFim && g.dataFim !== g.dataInicio ? `a ${formatDate(g.dataFim)}` : ''}</span>
+                      <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">⏰ {g.horaInicio} → {g.horaFim}</span>
+                    </p>
+                    <div className="flex flex-col gap-1">
+                      {g.cols.map((colab, j) => <span key={j} className="text-zinc-200 font-semibold text-[13px]">• {colab}</span>)}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })}
       </div>
     </div>
   )
