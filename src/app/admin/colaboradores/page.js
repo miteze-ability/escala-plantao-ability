@@ -20,6 +20,7 @@ export default function Colaboradores() {
   const [editandoId, setEditandoId]     = useState(null)
   const [editForm, setEditForm]         = useState({})
   const [busca, setBusca]               = useState('')
+  const [filtroSupervisor, setFiltroSupervisor] = useState('')
   const [msg, setMsg]                   = useState({ texto: '', tipo: 'ok' })
   const [loading, setLoading]           = useState(true)
   const [salvando, setSalvando]         = useState(false)
@@ -137,9 +138,14 @@ export default function Colaboradores() {
     }
   }
 
-  const linhasFiltradas = linhas.filter(l =>
-    !busca || Object.values(l).some(v => String(v).toLowerCase().includes(busca.toLowerCase()))
-  )
+  // Lista de supervisores únicos extraída dos dados carregados
+  const supervisoresUnicos = [...new Set(linhas.map(l => l.supervisor).filter(Boolean))].sort()
+
+  const linhasFiltradas = linhas.filter(l => {
+    const passaBusca = !busca || Object.values(l).some(v => String(v).toLowerCase().includes(busca.toLowerCase()))
+    const passaSupervisor = !filtroSupervisor || l.supervisor === filtroSupervisor
+    return passaBusca && passaSupervisor
+  })
 
   // ── Login ────────────────────────────────────────────────────────────────
   if (!autenticado) return (
@@ -200,6 +206,37 @@ export default function Colaboradores() {
         <input type="text" placeholder="🔍 Buscar colaborador..." value={busca}
           onChange={e => setBusca(e.target.value)}
           className="bg-zinc-800 border border-zinc-700 text-zinc-100 text-xs rounded px-3 py-1.5 focus:outline-none focus:border-red-500 w-64" />
+
+        {/* ── Filtro por Supervisor ── */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500 whitespace-nowrap">Supervisor:</span>
+          <select
+            value={filtroSupervisor}
+            onChange={e => setFiltroSupervisor(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 text-zinc-100 text-xs rounded px-3 py-1.5 focus:outline-none focus:border-red-500 max-w-[260px]"
+          >
+            <option value="">Todos</option>
+            {supervisoresUnicos.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          {filtroSupervisor && (
+            <button
+              onClick={() => setFiltroSupervisor('')}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors font-medium"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Contador de resultados */}
+        {(busca || filtroSupervisor) && (
+          <span className="text-xs text-zinc-500">
+            {linhasFiltradas.length} de {linhas.length} resultado{linhasFiltradas.length !== 1 ? 's' : ''}
+          </span>
+        )}
+
         <button onClick={adicionarLinha}
           disabled={!!editandoId}
           className="ml-auto text-xs bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-1.5 rounded-lg transition-colors">
