@@ -459,9 +459,17 @@ export default function Admin() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className={lbl}>Localidade de Atendimento</label>
-                <select className={sel} value={form.localidade} onChange={e => setForm(f => ({...f, localidade: e.target.value}))}>
-                  {LOCALIDADES.map(l => <option key={l}>{l}</option>)}
-                </select>
+                <input 
+                  type="text" 
+                  className={sel} 
+                  list="lista-localidades-modal" 
+                  value={form.localidade} 
+                  onChange={e => setForm(f => ({...f, localidade: e.target.value}))} 
+                  placeholder="Ex: Capital, Interior, Campinas..."
+                />
+                <datalist id="lista-localidades-modal">
+                  {LOCALIDADES.map(l => <option key={l} value={l} />)}
+                </datalist>
               </div>
               <div className="flex flex-col gap-1 sm:col-span-2">
                 <label className={lbl}>
