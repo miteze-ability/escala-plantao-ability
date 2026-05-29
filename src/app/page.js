@@ -55,13 +55,31 @@ function dentroDoIntervalo(entrada, de, ate) {
 
 // CardPlantao removido — a renderização agora é feita diretamente em ColunaSetor
 
-function ColunaSetor({ setor, entradas }) {
+function ColunaSetor({ setor, entradas, locMap }) {
   const cfg = SETOR_CONFIG[setor]
   
   // ── 1. Painel Supervisores ──
   const supervisores = [...new Set(entradas.map(e => e.supervisor).filter(Boolean))].sort()
 
-  // ── 2 e 3. Agrupamento por Horário para Capital e Interior ──
+  // Mapeia todos os colaboradores dentro das entradas e vincula a sua localidade da base
+  const flatColabs = []
+  entradas.forEach(e => {
+    const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
+    cols.forEach(c => {
+      flatColabs.push({
+        colaborador: c,
+        localidade: locMap[c] || 'Sem Localidade',
+        dataInicio: e.dataInicio,
+        dataFim: e.dataFim,
+        horaInicio: e.horaInicio,
+        horaFim: e.horaFim,
+      })
+    })
+  })
+
+  // Identifica dinamicamente todas as localidades presentes no setor
+  const localidadesPresentes = [...new Set(flatColabs.map(f => f.localidade))].sort()
+  
   const agruparPorHorario = (lista) => {
     const grupos = {}
     lista.forEach(e => {
@@ -75,8 +93,7 @@ function ColunaSetor({ setor, entradas }) {
           cols: []
         }
       }
-      const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
-      grupos[key].cols.push(...cols)
+      grupos[key].cols.push(e.colaborador)
     })
     return Object.values(grupos).map(g => {
       g.cols.sort((a,b) => a.localeCompare(b))
@@ -84,11 +101,9 @@ function ColunaSetor({ setor, entradas }) {
     }).sort((a,b) => a.dataInicio.localeCompare(b.dataInicio) || a.horaInicio.localeCompare(b.horaInicio))
   }
 
-  // Identifica dinamicamente todas as localidades presentes no setor
-  const localidadesPresentes = [...new Set(entradas.map(e => e.localidade).filter(Boolean))].sort()
   const gruposPorLocalidade = localidadesPresentes.map(loc => ({
     localidade: loc,
-    grupos: agruparPorHorario(entradas.filter(e => e.localidade === loc))
+    grupos: agruparPorHorario(flatColabs.filter(f => f.localidade === loc))
   }))
 
   const totalColabs = entradas.reduce((acc, e) => {
@@ -272,6 +287,7 @@ export default function Home() {
   const [filtroDe, setFiltroDe] = useState('')
   const [filtroAte, setFiltroAte] = useState('')
   const [reMap, setReMap] = useState({})
+  const [locMap, setLocMap] = useState({})
   const [carregando, setCarregando] = useState(true)
 
   // ── Carrega dados do Supabase via API ──────────────────────────────────────
@@ -282,9 +298,10 @@ export default function Home() {
         fetch('/api/colaboradores'),
       ])
       const { entradas: ent } = await resEscalas.json()
-      const { reMap: rm }     = await resColabs.json()
+      const { reMap: rm, locMap: lm }     = await resColabs.json()
       setEntradas(ent ?? [])
       setReMap(rm ?? {})
+      setLocMap(lm ?? {})
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
     } finally {
@@ -330,7 +347,7 @@ export default function Home() {
       const dias = Math.max(1, Math.round((dFim - dIni) / 86400000) + 1)
       const obs = `${formatDate(e.dataInicio)}${e.dataFim && e.dataFim !== e.dataInicio ? ' a ' + formatDate(e.dataFim) : ''} ${e.horaInicio}–${e.horaFim}`
       cols.forEach(nome => {
-        if (!mapa[nome]) mapa[nome] = { setor: e.setor, localidade: e.localidade, dias: 0, obsList: [] }
+        if (!mapa[nome]) mapa[nome] = { setor: e.setor, localidade: locMap[nome] || '—', dias: 0, obsList: [] }
         mapa[nome].dias += dias
         mapa[nome].obsList.push(obs)
       })
@@ -444,7 +461,7 @@ export default function Home() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
               {SETORES.map(s => (
-                <ColunaSetor key={s} setor={s} entradas={porSetor[s]} />
+                <ColunaSetor key={s} setor={s} entradas={porSetor[s]} locMap={locMap} />
               ))}
             </div>
 

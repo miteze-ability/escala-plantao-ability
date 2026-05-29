@@ -32,7 +32,6 @@ const EMPTY_FORM = {
   colaboradores: [], supervisor: '', setor: 'CLD',
   dataInicio: '', dataFim: '',
   horaInicio: '08:00', horaFim: '17:00',
-  localidade: 'Capital',
 }
 
 function pad(n) { return String(n).padStart(2, '0') }
@@ -380,7 +379,6 @@ export default function Admin() {
                   <th className="px-4 py-3 text-left">Início</th>
                   <th className="px-4 py-3 text-left">Fim</th>
                   <th className="px-4 py-3 text-left">Horário</th>
-                  <th className="px-4 py-3 text-left">Localidade</th>
                   <th className="px-4 py-3 text-left text-zinc-600">Inserido em</th>
                   <th className="px-4 py-3 text-center">Ações</th>
                 </tr>
@@ -412,14 +410,6 @@ export default function Admin() {
                       </td>
                       <td className="px-4 py-3 text-zinc-300 font-mono text-xs">{formatDate(e.dataFim)}</td>
                       <td className="px-4 py-3 text-zinc-400 font-mono text-xs">{e.horaInicio} – {e.horaFim}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium
-                          ${e.localidade === 'Capital'  ? 'bg-blue-900 text-blue-300' :
-                            e.localidade === 'Interior' ? 'bg-green-900 text-green-300' :
-                            'bg-zinc-700 text-zinc-300'}`}>
-                          {e.localidade}
-                        </span>
-                      </td>
                       <td className="px-4 py-3 text-zinc-600 text-xs whitespace-nowrap">
                         {formatDatetime(e.dataInsercao)}
                       </td>
@@ -456,20 +446,6 @@ export default function Admin() {
                 <select className={sel} value={form.setor} onChange={e => setForm(f => ({...f, setor: e.target.value}))}>
                   {SETORES.map(s => <option key={s}>{s}</option>)}
                 </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className={lbl}>Localidade de Atendimento</label>
-                <input 
-                  type="text" 
-                  className={sel} 
-                  list="lista-localidades-modal" 
-                  value={form.localidade} 
-                  onChange={e => setForm(f => ({...f, localidade: e.target.value}))} 
-                  placeholder="Ex: Capital, Interior, Campinas..."
-                />
-                <datalist id="lista-localidades-modal">
-                  {LOCALIDADES.map(l => <option key={l} value={l} />)}
-                </datalist>
               </div>
               <div className="flex flex-col gap-1 sm:col-span-2">
                 <label className={lbl}>

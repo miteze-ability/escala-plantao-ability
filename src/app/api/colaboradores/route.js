@@ -29,6 +29,7 @@ export async function GET(request) {
         re:          String(r.re          ?? ''),
         tt:          String(r.tt          ?? ''),
         colaborador: String(r.colaborador ?? ''),
+        localidade:  String(r.localidade  ?? ''),
         gerente:     String(r.gerente     ?? ''),
         coordenador: String(r.coordenador ?? ''),
         supervisor:  String(r.supervisor  ?? ''),
@@ -39,9 +40,15 @@ export async function GET(request) {
   const colaboradores = [...new Set(rows.map(r => r.colaborador).filter(Boolean))].sort()
   const supervisores  = [...new Set(rows.map(r => r.supervisor ).filter(Boolean))].sort()
   const reMap = {}
-  rows.forEach(r => { if (r.colaborador && r.re) reMap[r.colaborador] = r.re })
+  const locMap = {}
+  rows.forEach(r => { 
+    if (r.colaborador) {
+      if (r.re) reMap[r.colaborador] = r.re 
+      if (r.localidade) locMap[r.colaborador] = r.localidade
+    }
+  })
 
-  return NextResponse.json({ colaboradores, supervisores, reMap })
+  return NextResponse.json({ colaboradores, supervisores, reMap, locMap })
 }
 
 // ─── POST /api/colaboradores ─────────────────────────────────────────────────
@@ -55,6 +62,7 @@ export async function POST(request) {
       re:          body.re          ?? '',
       tt:          body.tt          ?? '',
       colaborador: body.colaborador ?? '',
+      localidade:  body.localidade  ?? '',
       gerente:     body.gerente     ?? '',
       coordenador: body.coordenador ?? '',
       supervisor:  body.supervisor  ?? '',
@@ -82,6 +90,7 @@ export async function PUT(request) {
       re:          body.re          ?? '',
       tt:          body.tt          ?? '',
       colaborador: body.colaborador ?? '',
+      localidade:  body.localidade  ?? '',
       gerente:     body.gerente     ?? '',
       coordenador: body.coordenador ?? '',
       supervisor:  body.supervisor  ?? '',
