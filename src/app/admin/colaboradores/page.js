@@ -5,12 +5,13 @@ const COLUNAS = [
   { key: 're',          label: 'RE Ability', width: '100px' },
   { key: 'tt',          label: 'TT',         width: '100px' },
   { key: 'colaborador', label: 'Colaborador', width: '220px' },
+  { key: 'localidade',  label: 'Localidade',  width: '120px' },
   { key: 'gerente',     label: 'Gerente',     width: '200px' },
   { key: 'coordenador', label: 'Coordenador', width: '200px' },
   { key: 'supervisor',  label: 'Supervisor',  width: '200px' },
 ]
 
-const LINHA_VAZIA = { re: '', tt: '', colaborador: '', gerente: '', coordenador: '', supervisor: '' }
+const LINHA_VAZIA = { re: '', tt: '', colaborador: '', localidade: '', gerente: '', coordenador: '', supervisor: '' }
 
 export default function Colaboradores() {
   const [autenticado, setAutenticado]   = useState(false)
@@ -246,6 +247,11 @@ export default function Colaboradores() {
 
       {/* TABELA */}
       <main className="px-6 py-6">
+        <datalist id="lista-localidades">
+          <option value="Capital" />
+          <option value="Interior" />
+        </datalist>
+
         {loading && <p className="text-zinc-500 text-center py-16 animate-pulse">Carregando colaboradores...</p>}
 
         {!loading && (
@@ -288,6 +294,7 @@ export default function Colaboradores() {
                               <input
                                 autoFocus={col.key === 'colaborador'}
                                 type="text"
+                                list={col.key === 'localidade' ? 'lista-localidades' : undefined}
                                 value={editForm[col.key] ?? ''}
                                 onChange={e => setEditForm(f => ({...f, [col.key]: e.target.value}))}
                                 onKeyDown={e => { if (e.key === 'Enter') confirmarEdicao(); if (e.key === 'Escape') cancelarEdicao() }}
