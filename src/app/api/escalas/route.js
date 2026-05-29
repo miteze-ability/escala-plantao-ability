@@ -23,7 +23,7 @@ export async function GET() {
     dataFim:      row.data_fim ?? '',
     horaInicio:   row.hora_inicio ?? '',
     horaFim:      row.hora_fim ?? '',
-    localidade:   row.localidade ?? '',
+    tipo:         row.tipo ?? 'Tecnico',
     dataInsercao: row.data_insercao ? new Date(row.data_insercao).getTime() : null,
   }))
 
@@ -45,7 +45,7 @@ export async function POST(request) {
       data_fim:      body.dataFim,
       hora_inicio:   body.horaInicio ?? '08:00',
       hora_fim:      body.horaFim    ?? '17:00',
-      localidade:    body.localidade ?? 'Capital',
+      tipo:          body.tipo       ?? 'Tecnico',
     }])
     .select()
     .single()
@@ -64,7 +64,7 @@ export async function POST(request) {
       dataFim:      data.data_fim,
       horaInicio:   data.hora_inicio,
       horaFim:      data.hora_fim,
-      localidade:   data.localidade,
+      tipo:         data.tipo,
       dataInsercao: data.data_insercao ? new Date(data.data_insercao).getTime() : null,
     }
   }, { status: 201 })
@@ -89,7 +89,7 @@ export async function PUT(request) {
       data_fim:      body.dataFim,
       hora_inicio:   body.horaInicio ?? '08:00',
       hora_fim:      body.horaFim    ?? '17:00',
-      localidade:    body.localidade ?? 'Capital',
+      tipo:          body.tipo       ?? 'Tecnico',
     })
     .eq('id', id)
     .select()
@@ -109,7 +109,7 @@ export async function PUT(request) {
       dataFim:      data.data_fim,
       horaInicio:   data.hora_inicio,
       horaFim:      data.hora_fim,
-      localidade:   data.localidade,
+      tipo:         data.tipo,
       dataInsercao: data.data_insercao ? new Date(data.data_insercao).getTime() : null,
     }
   })

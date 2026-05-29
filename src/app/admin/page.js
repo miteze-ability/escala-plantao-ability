@@ -29,9 +29,10 @@ const HORAS = Array.from({ length: 48 }, (_, i) => {
 })
 
 const EMPTY_FORM = {
-  colaboradores: [], supervisor: '', setor: 'CLD',
+  colaboradores: [], setor: 'CLD',
   dataInicio: '', dataFim: '',
   horaInicio: '08:00', horaFim: '17:00',
+  tipo: 'Tecnico',
 }
 
 function pad(n) { return String(n).padStart(2, '0') }
@@ -235,6 +236,7 @@ export default function Admin() {
   const logout = () => { sessionStorage.removeItem('admin_auth'); setAutenticado(false) }
 
   const abrirNovo   = () => { setForm(EMPTY_FORM); setEditId(null); setModalAberto(true) }
+  const abrirNovoSup = () => { setForm({ ...EMPTY_FORM, tipo: 'Supervisor' }); setEditId(null); setModalAberto(true) }
   const abrirEditar = (e) => {
     const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
     setForm({ ...e, colaboradores: cols })
@@ -322,10 +324,16 @@ export default function Admin() {
               <div className="w-px bg-zinc-700" />
               <div><p className="text-xl font-bold text-white">{totalColabs}</p><p className="text-xs text-zinc-500">Em escala</p></div>
             </div>
-            <button onClick={abrirNovo}
-              className="bg-red-700 hover:bg-red-600 text-white font-semibold text-sm px-5 py-2 rounded-lg transition-colors whitespace-nowrap">
-              + Novo Plantão
-            </button>
+            <div className="flex gap-2">
+              <button onClick={abrirNovo}
+                className="bg-red-700 hover:bg-red-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+                + Novo Plantão
+              </button>
+              <button onClick={abrirNovoSup}
+                className="bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+                + Plantão Supervisor
+              </button>
+            </div>
             <div className="flex gap-2">
               <a href="/admin/colaboradores" className="text-xs text-zinc-400 hover:text-white border border-zinc-700 px-3 py-2 rounded-lg transition-colors">
                 👥 Colaboradores
@@ -374,8 +382,8 @@ export default function Admin() {
               <thead>
                 <tr className="bg-zinc-800 text-zinc-400 text-xs uppercase tracking-wider">
                   <th className="px-4 py-3 text-left">Setor</th>
-                  <th className="px-4 py-3 text-left">Colaboradores</th>
-                  <th className="px-4 py-3 text-left">Supervisor</th>
+                  <th className="px-4 py-3 text-left">Tipo</th>
+                  <th className="px-4 py-3 text-left">Equipe / Supervisores</th>
                   <th className="px-4 py-3 text-left">Início</th>
                   <th className="px-4 py-3 text-left">Fim</th>
                   <th className="px-4 py-3 text-left">Horário</th>
@@ -398,12 +406,16 @@ export default function Admin() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium border ${e.tipo === 'Supervisor' ? 'bg-blue-900/50 text-blue-300 border-blue-800' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
+                          {e.tipo === 'Supervisor' ? 'Supervisor' : 'Técnico'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           {cols.map((c, i) => <span key={i} className="text-white font-medium text-xs">• {c}</span>)}
-                          {cols.length > 1 && <span className="text-zinc-500 text-xs">{cols.length} colaboradores</span>}
+                          {cols.length > 1 && <span className="text-zinc-500 text-xs">{cols.length} {e.tipo === 'Supervisor' ? 'supervisores' : 'colaboradores'}</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-zinc-300 text-xs">{e.supervisor}</td>
                       <td className="px-4 py-3 text-zinc-300 font-mono text-xs">
                         {formatDate(e.dataInicio)}
                         {isFeriado && <span className="ml-1 text-red-400">★</span>}
@@ -435,7 +447,7 @@ export default function Admin() {
           <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-2xl shadow-2xl my-8">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
               <h2 className="text-base font-bold text-white uppercase tracking-wide">
-                {editId ? 'Editar Plantão' : 'Novo Plantão'}
+                {editId ? 'Editar Plantão' : form.tipo === 'Supervisor' ? 'Novo Plantão de Supervisores' : 'Novo Plantão'}
               </h2>
               <button onClick={fecharModal} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
             </div>
@@ -449,22 +461,15 @@ export default function Admin() {
               </div>
               <div className="flex flex-col gap-1 sm:col-span-2">
                 <label className={lbl}>
-                  Colaboradores *
+                  {form.tipo === 'Supervisor' ? 'Supervisores Escalados *' : 'Colaboradores Escalados *'}
                   {form.colaboradores.length > 0 && (
                     <span className="ml-2 bg-red-700 text-white text-xs px-2 py-0.5 rounded-full">
                       {form.colaboradores.length} selecionado{form.colaboradores.length > 1 ? 's' : ''}
                     </span>
                   )}
                 </label>
-                <MultiSelect lista={colaboradores} selecionados={form.colaboradores}
+                <MultiSelect lista={form.tipo === 'Supervisor' ? supervisores : colaboradores} selecionados={form.colaboradores}
                   onChange={cols => setForm(f => ({...f, colaboradores: cols}))} />
-              </div>
-              <div className="flex flex-col gap-1 sm:col-span-2">
-                <label className={lbl}>Supervisor</label>
-                <select className={sel} value={form.supervisor} onChange={e => setForm(f => ({...f, supervisor: e.target.value}))}>
-                  <option value="">— Selecione —</option>
-                  {supervisores.map(s => <option key={s}>{s}</option>)}
-                </select>
               </div>
               <div className="flex flex-col gap-1">
                 <label className={lbl}>Data Início *</label>

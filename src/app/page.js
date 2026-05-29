@@ -59,11 +59,16 @@ function ColunaSetor({ setor, entradas, locMap }) {
   const cfg = SETOR_CONFIG[setor]
   
   // ── 1. Painel Supervisores ──
-  const supervisores = [...new Set(entradas.map(e => e.supervisor).filter(Boolean))].sort()
+  // Agora os supervisores vêm das entradas que são do tipo 'Supervisor'
+  const entradasSup = entradas.filter(e => e.tipo === 'Supervisor')
+  const supervisores = [...new Set(entradasSup.flatMap(e => e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])))].sort()
 
+  // ── 2. Painéis de Localidade (Técnicos) ──
+  const entradasTec = entradas.filter(e => e.tipo !== 'Supervisor')
+  
   // Mapeia todos os colaboradores dentro das entradas e vincula a sua localidade da base
   const flatColabs = []
-  entradas.forEach(e => {
+  entradasTec.forEach(e => {
     const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
     cols.forEach(c => {
       flatColabs.push({
@@ -78,7 +83,16 @@ function ColunaSetor({ setor, entradas, locMap }) {
   })
 
   // Identifica dinamicamente todas as localidades presentes no setor
-  const localidadesPresentes = [...new Set(flatColabs.map(f => f.localidade))].sort()
+  const localidadesPresentes = [...new Set(flatColabs.map(f => f.localidade))]
+  
+  // ORDEM FIXADA PELO USUÁRIO: 1º Suporte, 2º Capital, o resto em qualquer ordem (alfabética)
+  localidadesPresentes.sort((a, b) => {
+    if (a === 'Suporte' && b !== 'Suporte') return -1
+    if (b === 'Suporte' && a !== 'Suporte') return 1
+    if (a === 'Capital' && b !== 'Capital') return -1
+    if (b === 'Capital' && a !== 'Capital') return 1
+    return a.localeCompare(b)
+  })
   
   const agruparPorHorario = (lista) => {
     const grupos = {}
@@ -106,7 +120,7 @@ function ColunaSetor({ setor, entradas, locMap }) {
     grupos: agruparPorHorario(flatColabs.filter(f => f.localidade === loc))
   }))
 
-  const totalColabs = entradas.reduce((acc, e) => {
+  const totalColabs = entradasTec.reduce((acc, e) => {
     const c = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
     return acc + c.length
   }, 0)
@@ -340,7 +354,8 @@ export default function Home() {
 
   const tabelaTecnicos = (() => {
     const mapa = {}
-    entradasFiltradas.forEach(e => {
+    const apenasTecnicos = entradasFiltradas.filter(e => e.tipo !== 'Supervisor')
+    apenasTecnicos.forEach(e => {
       const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
       const dIni = new Date((filtroDe && e.dataInicio < filtroDe ? filtroDe : e.dataInicio) + 'T00:00:00')
       const dFim = new Date((filtroAte && (e.dataFim||e.dataInicio) > filtroAte ? filtroAte : (e.dataFim||e.dataInicio)) + 'T00:00:00')
