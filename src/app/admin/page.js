@@ -172,59 +172,70 @@ function TelaLogin({ onLogin }) {
   )
 }
 
+// ─── Toast de feedback ─────────────────────────────────────────────────────
+function Toast({ msg, tipo }) {
+  if (!msg) return null
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold transition-all
+      ${tipo === 'erro' ? 'bg-red-700 text-white' : 'bg-green-700 text-white'}`}>
+      {msg}
+    </div>
+  )
+}
+
 // ─── Admin principal ──────────────────────────────────────────────────────
 export default function Admin() {
-  const [autenticado, setAutenticado] = useState(false)
+  const [autenticado, setAutenticado]   = useState(false)
   const [colaboradores, setColaboradores] = useState([])
-  const [supervisores, setSupervisores] = useState([])
-  const [entradas, setEntradas] = useState([])
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [editId, setEditId] = useState(null)
-  const [modalAberto, setModalAberto] = useState(false)
-  const [filtroSetor, setFiltroSetor] = useState('Todos')
-  const [filtroMes, setFiltroMes] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [supervisores, setSupervisores]   = useState([])
+  const [entradas, setEntradas]           = useState([])
+  const [form, setForm]                   = useState(EMPTY_FORM)
+  const [editId, setEditId]               = useState(null)
+  const [modalAberto, setModalAberto]     = useState(false)
+  const [filtroSetor, setFiltroSetor]     = useState('Todos')
+  const [filtroMes, setFiltroMes]         = useState('')
+  const [loading, setLoading]             = useState(true)
+  const [salvando, setSalvando]           = useState(false)
+  const [toast, setToast]                 = useState({ msg: '', tipo: 'ok' })
+
+  const mostrarToast = (msg, tipo = 'ok') => {
+    setToast({ msg, tipo })
+    setTimeout(() => setToast({ msg: '', tipo: 'ok' }), 3000)
+  }
 
   // Verifica sessão salva
   useEffect(() => {
     if (sessionStorage.getItem('admin_auth') === '1') setAutenticado(true)
   }, [])
 
-  useEffect(() => {
-    if (!autenticado) return
-    // Lê colaboradores do localStorage (gestão de colaboradores)
+  // ── Carrega dados do Supabase ────────────────────────────────────────────
+  const carregarDados = useCallback(async () => {
     try {
-      const s = localStorage.getItem('escala_colaboradores')
-      if (s) {
-        const lista = JSON.parse(s)
-        setColaboradores([...new Set(lista.map(l => l.colaborador).filter(Boolean))].sort())
-        setSupervisores([...new Set(lista.map(l => l.supervisor).filter(Boolean))].sort())
-        setLoading(false)
-        return
-      }
-    } catch {}
-    // Fallback: tenta a API (xlsx)
-    fetch('/api/colaboradores')
-      .then(r => r.json())
-      .then(d => { setColaboradores(d.colaboradores || []); setSupervisores(d.supervisores || []) })
-      .finally(() => setLoading(false))
-    try { const s = localStorage.getItem('escala_entradas'); if (s) setEntradas(JSON.parse(s)) } catch {}
-  }, [autenticado])
-
-  useEffect(() => {
-    if (!autenticado) return
-    try { const s = localStorage.getItem('escala_entradas'); if (s) setEntradas(JSON.parse(s)) } catch {}
-  }, [autenticado])
-
-  const login = () => { sessionStorage.setItem('admin_auth', '1'); setAutenticado(true) }
-  const logout = () => { sessionStorage.removeItem('admin_auth'); setAutenticado(false) }
-
-  const salvar = useCallback((lista) => {
-    setEntradas(lista)
-    try { localStorage.setItem('escala_entradas', JSON.stringify(lista)) } catch {}
+      const [resEscalas, resColabs] = await Promise.all([
+        fetch('/api/escalas'),
+        fetch('/api/colaboradores'),
+      ])
+      const { entradas: ent }              = await resEscalas.json()
+      const { colaboradores: cols, supervisores: sups } = await resColabs.json()
+      setEntradas(ent ?? [])
+      setColaboradores(cols ?? [])
+      setSupervisores(sups ?? [])
+    } catch {
+      mostrarToast('Erro ao carregar dados do servidor', 'erro')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const abrirNovo = () => { setForm(EMPTY_FORM); setEditId(null); setModalAberto(true) }
+  useEffect(() => {
+    if (!autenticado) return
+    carregarDados()
+  }, [autenticado, carregarDados])
+
+  const login  = () => { sessionStorage.setItem('admin_auth', '1'); setAutenticado(true) }
+  const logout = () => { sessionStorage.removeItem('admin_auth'); setAutenticado(false) }
+
+  const abrirNovo   = () => { setForm(EMPTY_FORM); setEditId(null); setModalAberto(true) }
   const abrirEditar = (e) => {
     const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
     setForm({ ...e, colaboradores: cols })
@@ -233,31 +244,58 @@ export default function Admin() {
   }
   const fecharModal = () => { setModalAberto(false); setEditId(null) }
 
-  const submeter = () => {
+  // ── Submeter (criar ou editar) ───────────────────────────────────────────
+  const submeter = async () => {
     if (!form.colaboradores.length || !form.dataInicio || !form.dataFim) return
-    const entrada = {
-      ...form,
-      id: editId ?? Date.now(),
-      // dataInsercao só é definida na criação, nunca sobrescrita na edição
-      dataInsercao: editId !== null
-        ? (entradas.find(e => e.id === editId)?.dataInsercao ?? Date.now())
-        : Date.now(),
+    setSalvando(true)
+    try {
+      const isEdit = editId !== null
+      const url    = isEdit ? `/api/escalas?id=${editId}` : '/api/escalas'
+      const method = isEdit ? 'PUT' : 'POST'
+
+      const res  = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Erro desconhecido')
+
+      // Atualiza a lista local
+      if (isEdit) {
+        setEntradas(prev => prev.map(e => e.id === editId ? json.entrada : e))
+      } else {
+        setEntradas(prev => [...prev, json.entrada])
+      }
+
+      mostrarToast(isEdit ? '✓ Plantão atualizado!' : '✓ Plantão cadastrado!')
+      fecharModal()
+    } catch (err) {
+      mostrarToast(`Erro: ${err.message}`, 'erro')
+    } finally {
+      setSalvando(false)
     }
-    delete entrada.colaborador
-    salvar(editId !== null ? entradas.map(e => e.id === editId ? entrada : e) : [...entradas, entrada])
-    fecharModal()
   }
 
-  const excluir = (id) => {
+  // ── Excluir ──────────────────────────────────────────────────────────────
+  const excluir = async (id) => {
     if (!confirm('Excluir este plantão?')) return
-    salvar(entradas.filter(e => e.id !== id))
+    try {
+      const res = await fetch(`/api/escalas?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Falha ao excluir')
+      setEntradas(prev => prev.filter(e => e.id !== id))
+      mostrarToast('Plantão excluído.')
+    } catch (err) {
+      mostrarToast(`Erro: ${err.message}`, 'erro')
+    }
   }
 
   if (!autenticado) return <TelaLogin onLogin={login} />
 
   const entradasFiltradas = entradas.filter(e => {
     const porSetor = filtroSetor === 'Todos' || e.setor === filtroSetor
-    const porMes = !filtroMes || (e.dataInicio && e.dataInicio.startsWith(`2026-${filtroMes}`))
+    const porMes   = !filtroMes || (e.dataInicio && e.dataInicio.startsWith(`2026-${filtroMes}`))
     return porSetor && porMes
   }).sort((a, b) => a.dataInicio.localeCompare(b.dataInicio))
 
@@ -267,6 +305,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+      <Toast msg={toast.msg} tipo={toast.tipo} />
 
       {/* HEADER */}
       <header className="bg-zinc-900 border-b border-red-800 px-6 py-4 shadow-lg">
@@ -320,13 +359,13 @@ export default function Admin() {
 
       {/* TABELA */}
       <main className="px-6 py-6">
-        {loading && <p className="text-zinc-500 text-center py-16">Carregando...</p>}
+        {loading && <p className="text-zinc-500 text-center py-16 animate-pulse">Carregando dados do servidor...</p>}
 
         {!loading && entradasFiltradas.length === 0 && (
           <div className="text-center py-16 text-zinc-600">
             <p className="text-4xl mb-3">📋</p>
             <p className="text-lg font-semibold">Nenhum plantão cadastrado</p>
-            <p className="text-sm mt-1">Clique em "+ Novo Plantão" para começar</p>
+            <p className="text-sm mt-1">Clique em &quot;+ Novo Plantão&quot; para começar</p>
           </div>
         )}
 
@@ -466,7 +505,7 @@ export default function Admin() {
                 </select>
               </div>
 
-              {/* Data de inserção — só exibe, não editável */}
+              {/* Data de inserção — só exibe */}
               <div className="flex flex-col gap-1 sm:col-span-2 bg-zinc-800/50 rounded-lg px-3 py-2 border border-zinc-700/50">
                 <label className="text-xs text-zinc-600 uppercase tracking-wide">Data de Inserção (automática)</label>
                 <p className="text-zinc-500 text-sm font-mono">
@@ -480,8 +519,9 @@ export default function Admin() {
             <div className="px-6 py-4 border-t border-zinc-800 flex justify-end gap-3">
               <button onClick={fecharModal} className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors">Cancelar</button>
               <button onClick={submeter}
-                disabled={!form.colaboradores.length || !form.dataInicio || !form.dataFim}
-                className="bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2 rounded-lg transition-colors">
+                disabled={!form.colaboradores.length || !form.dataInicio || !form.dataFim || salvando}
+                className="bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2 rounded-lg transition-colors flex items-center gap-2">
+                {salvando ? <span className="animate-spin">⟳</span> : null}
                 {editId ? 'Salvar Alterações' : 'Cadastrar Plantão'}
               </button>
             </div>

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 const COLUNAS = [
   { key: 're',          label: 'RE Ability', width: '100px' },
@@ -11,47 +11,57 @@ const COLUNAS = [
 ]
 
 const LINHA_VAZIA = { re: '', tt: '', colaborador: '', gerente: '', coordenador: '', supervisor: '' }
-function novoId() { return Date.now() + Math.random() }
 
 export default function Colaboradores() {
-  const [autenticado, setAutenticado] = useState(false)
-  const [senha, setSenha] = useState('')
-  const [erroSenha, setErroSenha] = useState(false)
-  const [linhas, setLinhas] = useState([])
-  const [editandoId, setEditandoId] = useState(null)   // id da linha em edição
-  const [editForm, setEditForm] = useState({})          // valores temporários
-  const [busca, setBusca] = useState('')
-  const [msg, setMsg] = useState('')
+  const [autenticado, setAutenticado]   = useState(false)
+  const [senha, setSenha]               = useState('')
+  const [erroSenha, setErroSenha]       = useState(false)
+  const [linhas, setLinhas]             = useState([])
+  const [editandoId, setEditandoId]     = useState(null)
+  const [editForm, setEditForm]         = useState({})
+  const [busca, setBusca]               = useState('')
+  const [msg, setMsg]                   = useState({ texto: '', tipo: 'ok' })
+  const [loading, setLoading]           = useState(true)
+  const [salvando, setSalvando]         = useState(false)
+
+  const mostrarMsg = (texto, tipo = 'ok') => {
+    setMsg({ texto, tipo })
+    setTimeout(() => setMsg({ texto: '', tipo: 'ok' }), 3000)
+  }
 
   useEffect(() => {
     if (sessionStorage.getItem('admin_auth') === '1') setAutenticado(true)
   }, [])
 
+  // ── Carrega colaboradores do Supabase ────────────────────────────────────
+  const carregarColaboradores = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/colaboradores?full=1')
+      const json = await res.json()
+      setLinhas(json.linhas ?? [])
+    } catch {
+      mostrarMsg('Erro ao carregar colaboradores', 'erro')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!autenticado) return
-    try {
-      const s = localStorage.getItem('escala_colaboradores')
-      if (s) { const p = JSON.parse(s); if (p.length > 0) { setLinhas(p); return } }
-    } catch {}
-  }, [autenticado])
+    carregarColaboradores()
+  }, [autenticado, carregarColaboradores])
 
   const login = () => {
     if (senha === 'ability2026') { sessionStorage.setItem('admin_auth', '1'); setAutenticado(true) }
     else { setErroSenha(true); setSenha('') }
   }
 
-  const salvarStorage = (lista) => {
-    try { localStorage.setItem('escala_colaboradores', JSON.stringify(lista)) } catch {}
-  }
-
-  const mostrarMsg = (texto) => { setMsg(texto); setTimeout(() => setMsg(''), 3000) }
-
-  // ── Adicionar linha ──────────────────────────────────────────────────────
+  // ── Adicionar linha nova (envia ao Supabase) ─────────────────────────────
   const adicionarLinha = () => {
-    const nova = { ...LINHA_VAZIA, _id: novoId() }
-    const novas = [...linhas, nova]
-    setLinhas(novas)
-    setEditandoId(nova._id)
+    // Cria uma linha temporária com _id falso para edição inline
+    const tempId = `temp_${Date.now()}`
+    setLinhas(prev => [...prev, { ...LINHA_VAZIA, _id: tempId }])
+    setEditandoId(tempId)
     setEditForm({ ...LINHA_VAZIA })
   }
 
@@ -62,31 +72,69 @@ export default function Colaboradores() {
   }
 
   // ── Confirmar edição ─────────────────────────────────────────────────────
-  const confirmarEdicao = () => {
-    const novas = linhas.map(l => l._id === editandoId ? { ...editForm, _id: editandoId } : l)
-    setLinhas(novas)
-    salvarStorage(novas)
-    setEditandoId(null)
-    mostrarMsg('✓ Colaborador salvo!')
+  const confirmarEdicao = async () => {
+    setSalvando(true)
+    try {
+      const isNova = String(editandoId).startsWith('temp_')
+
+      if (isNova) {
+        // POST — cria no Supabase
+        const res  = await fetch('/api/colaboradores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editForm),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error)
+
+        // Substitui a linha temporária pelo registro real
+        setLinhas(prev => prev.map(l =>
+          l._id === editandoId ? { ...json.colaborador, _id: json.colaborador.id } : l
+        ))
+      } else {
+        // PUT — atualiza no Supabase
+        const res  = await fetch(`/api/colaboradores?id=${editandoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editForm),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error)
+
+        setLinhas(prev => prev.map(l =>
+          l._id === editandoId ? { ...json.colaborador, _id: json.colaborador.id } : l
+        ))
+      }
+
+      mostrarMsg('✓ Colaborador salvo!')
+      setEditandoId(null)
+    } catch (err) {
+      mostrarMsg(`Erro: ${err.message}`, 'erro')
+    } finally {
+      setSalvando(false)
+    }
   }
 
   // ── Cancelar edição ──────────────────────────────────────────────────────
   const cancelarEdicao = () => {
-    // Se a linha estava vazia (nova), remove
-    const linha = linhas.find(l => l._id === editandoId)
-    if (linha && !linha.colaborador && !linha.re) {
-      setLinhas(linhas.filter(l => l._id !== editandoId))
+    // Remove a linha temporária se for nova
+    if (String(editandoId).startsWith('temp_')) {
+      setLinhas(prev => prev.filter(l => l._id !== editandoId))
     }
     setEditandoId(null)
   }
 
   // ── Excluir ──────────────────────────────────────────────────────────────
-  const excluir = (id) => {
+  const excluir = async (id) => {
     if (!confirm('Excluir este colaborador?')) return
-    const novas = linhas.filter(l => l._id !== id)
-    setLinhas(novas)
-    salvarStorage(novas)
-    mostrarMsg('Colaborador removido.')
+    try {
+      const res = await fetch(`/api/colaboradores?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Falha ao excluir')
+      setLinhas(prev => prev.filter(l => l._id !== id))
+      mostrarMsg('Colaborador removido.')
+    } catch (err) {
+      mostrarMsg(`Erro: ${err.message}`, 'erro')
+    }
   }
 
   const linhasFiltradas = linhas.filter(l =>
@@ -121,6 +169,14 @@ export default function Colaboradores() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
 
+      {/* TOAST */}
+      {msg.texto && (
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold
+          ${msg.tipo === 'erro' ? 'bg-red-700 text-white' : 'bg-green-700 text-white'}`}>
+          {msg.texto}
+        </div>
+      )}
+
       {/* HEADER */}
       <header className="bg-zinc-900 border-b border-red-800 px-6 py-4 shadow-lg">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -144,108 +200,110 @@ export default function Colaboradores() {
         <input type="text" placeholder="🔍 Buscar colaborador..." value={busca}
           onChange={e => setBusca(e.target.value)}
           className="bg-zinc-800 border border-zinc-700 text-zinc-100 text-xs rounded px-3 py-1.5 focus:outline-none focus:border-red-500 w-64" />
-        {msg && <span className="text-xs text-green-400 font-medium">{msg}</span>}
         <button onClick={adicionarLinha}
-          className="ml-auto text-xs bg-red-700 hover:bg-red-600 text-white font-semibold px-4 py-1.5 rounded-lg transition-colors">
+          disabled={!!editandoId}
+          className="ml-auto text-xs bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-1.5 rounded-lg transition-colors">
           + Novo Colaborador
         </button>
       </div>
 
       {/* TABELA */}
       <main className="px-6 py-6">
-        <div className="overflow-x-auto rounded-lg border border-zinc-800 shadow-lg">
-          <table className="text-xs w-full" style={{minWidth: '1000px'}}>
-            <thead>
-              <tr className="bg-zinc-800">
-                <th className="px-3 py-3 text-left text-zinc-400 font-bold uppercase tracking-wide w-8">#</th>
-                {COLUNAS.map(c => (
-                  <th key={c.key} style={{width: c.width}}
-                    className="px-3 py-3 text-left text-zinc-400 font-bold uppercase tracking-wide" translate="no">
-                    {c.label}
-                  </th>
-                ))}
-                <th className="px-3 py-3 text-center text-zinc-400 font-bold uppercase tracking-wide w-28">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhasFiltradas.length === 0 && (
-                <tr>
-                  <td colSpan={COLUNAS.length + 2} className="text-center py-12 text-zinc-600">
-                    {busca ? 'Nenhum resultado para a busca.' : 'Nenhum colaborador cadastrado. Clique em "+ Novo Colaborador".'}
-                  </td>
+        {loading && <p className="text-zinc-500 text-center py-16 animate-pulse">Carregando colaboradores...</p>}
+
+        {!loading && (
+          <div className="overflow-x-auto rounded-lg border border-zinc-800 shadow-lg">
+            <table className="text-xs w-full" style={{minWidth: '1000px'}}>
+              <thead>
+                <tr className="bg-zinc-800">
+                  <th className="px-3 py-3 text-left text-zinc-400 font-bold uppercase tracking-wide w-8">#</th>
+                  {COLUNAS.map(c => (
+                    <th key={c.key} style={{width: c.width}}
+                      className="px-3 py-3 text-left text-zinc-400 font-bold uppercase tracking-wide" translate="no">
+                      {c.label}
+                    </th>
+                  ))}
+                  <th className="px-3 py-3 text-center text-zinc-400 font-bold uppercase tracking-wide w-28">Ações</th>
                 </tr>
-              )}
-
-              {linhasFiltradas.map((linha, idx) => {
-                const emEdicao = editandoId === linha._id
-                return (
-                  <tr key={linha._id}
-                    className={`border-t border-zinc-800 transition-colors
-                      ${emEdicao ? 'bg-zinc-700' : idx % 2 === 0 ? 'bg-zinc-900 hover:bg-zinc-800/60' : 'bg-zinc-950 hover:bg-zinc-800/60'}`}>
-
-                    <td className="px-3 py-2 text-zinc-600 text-center select-none">{idx + 1}</td>
-
-                    {emEdicao ? (
-                      // ── Modo edição: inputs ───────────────────────────────
-                      <>
-                        {COLUNAS.map(col => (
-                          <td key={col.key} className="px-2 py-1.5">
-                            <input
-                              autoFocus={col.key === 'colaborador'}
-                              type="text"
-                              value={editForm[col.key] ?? ''}
-                              onChange={e => setEditForm(f => ({...f, [col.key]: e.target.value}))}
-                              onKeyDown={e => { if (e.key === 'Enter') confirmarEdicao(); if (e.key === 'Escape') cancelarEdicao() }}
-                              className="w-full bg-zinc-800 border border-zinc-600 text-zinc-100 text-xs rounded px-2 py-1 focus:outline-none focus:border-red-500"
-                              placeholder={col.label}
-                            />
-                          </td>
-                        ))}
-                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                          <button onClick={confirmarEdicao}
-                            className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded mr-1 transition-colors">
-                            ✓ OK
-                          </button>
-                          <button onClick={cancelarEdicao}
-                            className="text-xs bg-zinc-600 hover:bg-zinc-500 text-white px-2 py-1 rounded transition-colors">
-                            ✕
-                          </button>
-                        </td>
-                      </>
-                    ) : (
-                      // ── Modo leitura ──────────────────────────────────────
-                      <>
-                        {COLUNAS.map(col => (
-                          <td key={col.key} className="px-3 py-2.5 text-zinc-300 truncate max-w-0" style={{maxWidth: col.width}}>
-                            {col.key === 're' || col.key === 'tt'
-                              ? <span className="font-mono text-zinc-400">{linha[col.key] || '—'}</span>
-                              : col.key === 'colaborador'
-                              ? <span className="font-semibold text-white">{linha[col.key] || '—'}</span>
-                              : <span>{linha[col.key] || '—'}</span>}
-                          </td>
-                        ))}
-                        <td className="px-2 py-2.5 text-center whitespace-nowrap">
-                          <button onClick={() => iniciarEdicao(linha)}
-                            className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-3 py-1 rounded mr-1.5 transition-colors">
-                            ✏️ Editar
-                          </button>
-                          <button onClick={() => excluir(linha._id)}
-                            className="text-xs text-red-700 hover:text-red-400 transition-colors px-1">
-                            🗑️
-                          </button>
-                        </td>
-                      </>
-                    )}
+              </thead>
+              <tbody>
+                {linhasFiltradas.length === 0 && (
+                  <tr>
+                    <td colSpan={COLUNAS.length + 2} className="text-center py-12 text-zinc-600">
+                      {busca ? 'Nenhum resultado para a busca.' : 'Nenhum colaborador cadastrado. Clique em "+ Novo Colaborador".'}
+                    </td>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                )}
 
-        {linhas.length > 0 && (
+                {linhasFiltradas.map((linha, idx) => {
+                  const emEdicao = editandoId === linha._id
+                  return (
+                    <tr key={linha._id}
+                      className={`border-t border-zinc-800 transition-colors
+                        ${emEdicao ? 'bg-zinc-700' : idx % 2 === 0 ? 'bg-zinc-900 hover:bg-zinc-800/60' : 'bg-zinc-950 hover:bg-zinc-800/60'}`}>
+
+                      <td className="px-3 py-2 text-zinc-600 text-center select-none">{idx + 1}</td>
+
+                      {emEdicao ? (
+                        <>
+                          {COLUNAS.map(col => (
+                            <td key={col.key} className="px-2 py-1.5">
+                              <input
+                                autoFocus={col.key === 'colaborador'}
+                                type="text"
+                                value={editForm[col.key] ?? ''}
+                                onChange={e => setEditForm(f => ({...f, [col.key]: e.target.value}))}
+                                onKeyDown={e => { if (e.key === 'Enter') confirmarEdicao(); if (e.key === 'Escape') cancelarEdicao() }}
+                                className="w-full bg-zinc-800 border border-zinc-600 text-zinc-100 text-xs rounded px-2 py-1 focus:outline-none focus:border-red-500"
+                                placeholder={col.label}
+                              />
+                            </td>
+                          ))}
+                          <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                            <button onClick={confirmarEdicao} disabled={salvando}
+                              className="text-xs bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white px-2 py-1 rounded mr-1 transition-colors flex items-center gap-1 inline-flex">
+                              {salvando ? <span className="animate-spin">⟳</span> : '✓'} OK
+                            </button>
+                            <button onClick={cancelarEdicao}
+                              className="text-xs bg-zinc-600 hover:bg-zinc-500 text-white px-2 py-1 rounded transition-colors">
+                              ✕
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          {COLUNAS.map(col => (
+                            <td key={col.key} className="px-3 py-2.5 text-zinc-300 truncate max-w-0" style={{maxWidth: col.width}}>
+                              {col.key === 're' || col.key === 'tt'
+                                ? <span className="font-mono text-zinc-400">{linha[col.key] || '—'}</span>
+                                : col.key === 'colaborador'
+                                ? <span className="font-semibold text-white">{linha[col.key] || '—'}</span>
+                                : <span>{linha[col.key] || '—'}</span>}
+                            </td>
+                          ))}
+                          <td className="px-2 py-2.5 text-center whitespace-nowrap">
+                            <button onClick={() => iniciarEdicao(linha)}
+                              className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-3 py-1 rounded mr-1.5 transition-colors">
+                              ✏️ Editar
+                            </button>
+                            <button onClick={() => excluir(linha._id)}
+                              className="text-xs text-red-700 hover:text-red-400 transition-colors px-1">
+                              🗑️
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!loading && linhas.length > 0 && (
           <p className="text-xs text-zinc-600 mt-3">
-            {busca ? `${linhasFiltradas.length} de ${linhas.length} resultado(s)` : `${linhas.length} colaborador(es) · As alterações são salvas automaticamente ao confirmar cada linha.`}
+            {busca ? `${linhasFiltradas.length} de ${linhas.length} resultado(s)` : `${linhas.length} colaborador(es) · Dados salvos no Supabase automaticamente.`}
           </p>
         )}
       </main>

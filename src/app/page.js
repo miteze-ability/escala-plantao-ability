@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 const FERIADOS = [
   '2026-01-01','2026-04-21','2026-05-01','2026-09-07',
@@ -22,7 +22,6 @@ function calcularHoras(entrada) {
   const fimData = entrada.dataFim || entrada.dataInicio
   const fim    = new Date(`${fimData}T${entrada.horaFim}:00`)
   let diffMs = fim - inicio
-  // Se fim <= início significa que virou a meia-noite no mesmo dia (ex: 22:00→06:00)
   if (diffMs <= 0) diffMs += 24 * 60 * 60 * 1000
   return diffMs / (1000 * 60 * 60)
 }
@@ -159,7 +158,6 @@ function ColunaSetor({ setor, entradas }) {
   )
 }
 
-// ─── Tabela de técnicos ───────────────────────────────────────────────────
 function TabelaTecnicos({ tecnicos, reMap }) {
   const [filtroSetor, setFiltroSetor] = useState('Todos')
   const [ordemDias, setOrdemDias] = useState('desc')
@@ -249,42 +247,32 @@ export default function Home() {
   const [filtroDe, setFiltroDe] = useState('')
   const [filtroAte, setFiltroAte] = useState('')
   const [reMap, setReMap] = useState({})
+  const [carregando, setCarregando] = useState(true)
+
+  // ── Carrega dados do Supabase via API ──────────────────────────────────────
+  const carregarDados = useCallback(async () => {
+    try {
+      const [resEscalas, resColabs] = await Promise.all([
+        fetch('/api/escalas'),
+        fetch('/api/colaboradores'),
+      ])
+      const { entradas: ent } = await resEscalas.json()
+      const { reMap: rm }     = await resColabs.json()
+      setEntradas(ent ?? [])
+      setReMap(rm ?? {})
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err)
+    } finally {
+      setCarregando(false)
+    }
+  }, [])
 
   useEffect(() => {
-    // Carrega plantões
-    try { const s = localStorage.getItem('escala_entradas'); if (s) setEntradas(JSON.parse(s)) } catch {}
-
-    // Carrega reMap de colaboradores
-    try {
-      const s = localStorage.getItem('escala_colaboradores')
-      if (s) {
-        const lista = JSON.parse(s)
-        const map = {}
-        lista.forEach(l => { if (l.colaborador && l.re) map[l.colaborador] = l.re })
-        setReMap(map)
-      } else {
-        // Fallback API (xlsx)
-        fetch('/api/colaboradores').then(r => r.json()).then(d => setReMap(d.reMap || {})).catch(() => {})
-      }
-    } catch {}
-
-    // Atualiza quando admin salvar em outra aba
-    const onStorage = (e) => {
-      if (e.key === 'escala_entradas') {
-        try { setEntradas(JSON.parse(e.newValue || '[]')) } catch {}
-      }
-      if (e.key === 'escala_colaboradores') {
-        try {
-          const lista = JSON.parse(e.newValue || '[]')
-          const map = {}
-          lista.forEach(l => { if (l.colaborador && l.re) map[l.colaborador] = l.re })
-          setReMap(map)
-        } catch {}
-      }
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    carregarDados()
+    // Atualiza a cada 30 segundos automaticamente
+    const interval = setInterval(carregarDados, 30_000)
+    return () => clearInterval(interval)
+  }, [carregarDados])
 
   const hoje_str = hoje()
   const entradasFiltradas = entradas.filter(e => dentroDoIntervalo(e, filtroDe, filtroAte))
@@ -308,12 +296,10 @@ export default function Home() {
 
   const filtroAtivo = filtroDe || filtroAte
 
-  // ── Monta linhas da tabela de técnicos ──────────────────────────────────
   const tabelaTecnicos = (() => {
-    const mapa = {} // nome → { setor, localidade, dias, obs[] }
+    const mapa = {}
     entradasFiltradas.forEach(e => {
       const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
-      // calcula quantos dias este plantão ocupa no período filtrado
       const dIni = new Date((filtroDe && e.dataInicio < filtroDe ? filtroDe : e.dataInicio) + 'T00:00:00')
       const dFim = new Date((filtroAte && (e.dataFim||e.dataInicio) > filtroAte ? filtroAte : (e.dataFim||e.dataInicio)) + 'T00:00:00')
       const dias = Math.max(1, Math.round((dFim - dIni) / 86400000) + 1)
@@ -367,9 +353,14 @@ export default function Home() {
             </div>
           </div>
 
-          <a href="/admin" className="text-xs text-zinc-400 hover:text-white border border-zinc-600 px-3 py-1.5 rounded-lg transition-colors" translate="no">
-            ⚙ Gerenciar
-          </a>
+          <div className="flex items-center gap-3">
+            {carregando && (
+              <span className="text-xs text-zinc-500 animate-pulse">● atualizando...</span>
+            )}
+            <a href="/admin" className="text-xs text-zinc-400 hover:text-white border border-zinc-600 px-3 py-1.5 rounded-lg transition-colors" translate="no">
+              ⚙ Gerenciar
+            </a>
+          </div>
         </div>
       </header>
 
@@ -420,22 +411,29 @@ export default function Home() {
 
       {/* GRID DE SETORES */}
       <main className="px-6 py-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-          {SETORES.map(s => (
-            <ColunaSetor key={s} setor={s} entradas={porSetor[s]} />
-          ))}
-        </div>
-
-        {entradas.length === 0 && (
+        {carregando && entradas.length === 0 ? (
           <div className="text-center mt-16">
-            <p className="text-zinc-600 text-lg">Nenhum plantão cadastrado.</p>
-            <p className="text-zinc-700 text-sm mt-1">Acesse <a href="/admin" className="text-red-600 underline">Gerenciar</a> para inserir plantões.</p>
+            <p className="text-zinc-500 text-lg animate-pulse">Carregando escalas...</p>
           </div>
-        )}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+              {SETORES.map(s => (
+                <ColunaSetor key={s} setor={s} entradas={porSetor[s]} />
+              ))}
+            </div>
 
-        {/* ── TABELA DE TÉCNICOS ── */}
-        {tabelaTecnicos.length > 0 && (
-          <TabelaTecnicos tecnicos={tabelaTecnicos} reMap={reMap} />
+            {entradas.length === 0 && (
+              <div className="text-center mt-16">
+                <p className="text-zinc-600 text-lg">Nenhum plantão cadastrado.</p>
+                <p className="text-zinc-700 text-sm mt-1">Acesse <a href="/admin" className="text-red-600 underline">Gerenciar</a> para inserir plantões.</p>
+              </div>
+            )}
+
+            {tabelaTecnicos.length > 0 && (
+              <TabelaTecnicos tecnicos={tabelaTecnicos} reMap={reMap} />
+            )}
+          </>
         )}
       </main>
     </div>

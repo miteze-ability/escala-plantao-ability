@@ -1,44 +1,110 @@
 import { NextResponse } from 'next/server'
-import path from 'path'
-import fs from 'fs'
-import * as XLSX from 'xlsx'
+import { supabaseAdmin } from '@/lib/supabaseClient'
 
+// ─── GET /api/colaboradores ─────────────────────────────────────────────────
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const full = searchParams.get('full') === '1'
+  const db   = supabaseAdmin()
 
-  try {
-    let filePath = path.join(process.cwd(), 'data', 'Equipe Ability.xlsx')
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(process.cwd(), '..', 'Equipe Ability.xlsx')
-    }
+  const { data, error } = await db
+    .from('colaboradores')
+    .select('*')
+    .order('id', { ascending: true })
 
-    const buffer = fs.readFileSync(filePath)
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const data = XLSX.utils.sheet_to_json(sheet)
-
-    if (full) {
-      // Retorna todas as linhas com todos os campos
-      const linhas = data.map(r => ({
-        re:          String(r['RE Ability'] ?? ''),
-        tt:          String(r['TT'] ?? ''),
-        colaborador: String(r['Colaborador'] ?? ''),
-        gerente:     String(r['Gerente'] ?? ''),
-        coordenador: String(r['Coordenador'] ?? ''),
-        supervisor:  String(r['Supervisor'] ?? ''),
-      })).filter(l => l.colaborador)
-      return NextResponse.json({ linhas })
-    }
-
-    const colaboradores = [...new Set(data.map(r => r['Colaborador']).filter(Boolean))].sort()
-    const supervisores  = [...new Set(data.map(r => r['Supervisor']).filter(Boolean))].sort()
-    const reMap = {}
-    data.forEach(r => { if (r['Colaborador'] && r['RE Ability']) reMap[r['Colaborador']] = r['RE Ability'] })
-
-    return NextResponse.json({ colaboradores, supervisores, reMap })
-  } catch (e) {
-    if (full) return NextResponse.json({ linhas: [] }, { status: 200 })
-    return NextResponse.json({ colaboradores: [], supervisores: [], reMap: {}, error: e.message }, { status: 200 })
+  if (error) {
+    const vazio = full
+      ? { linhas: [] }
+      : { colaboradores: [], supervisores: [], reMap: {}, error: error.message }
+    return NextResponse.json(vazio, { status: 200 })
   }
+
+  const rows = data ?? []
+
+  if (full) {
+    const linhas = rows
+      .filter(r => r.colaborador)
+      .map(r => ({
+        _id:         r.id,
+        re:          String(r.re          ?? ''),
+        tt:          String(r.tt          ?? ''),
+        colaborador: String(r.colaborador ?? ''),
+        gerente:     String(r.gerente     ?? ''),
+        coordenador: String(r.coordenador ?? ''),
+        supervisor:  String(r.supervisor  ?? ''),
+      }))
+    return NextResponse.json({ linhas })
+  }
+
+  const colaboradores = [...new Set(rows.map(r => r.colaborador).filter(Boolean))].sort()
+  const supervisores  = [...new Set(rows.map(r => r.supervisor ).filter(Boolean))].sort()
+  const reMap = {}
+  rows.forEach(r => { if (r.colaborador && r.re) reMap[r.colaborador] = r.re })
+
+  return NextResponse.json({ colaboradores, supervisores, reMap })
+}
+
+// ─── POST /api/colaboradores ─────────────────────────────────────────────────
+export async function POST(request) {
+  const body = await request.json()
+  const db   = supabaseAdmin()
+
+  const { data, error } = await db
+    .from('colaboradores')
+    .insert([{
+      re:          body.re          ?? '',
+      tt:          body.tt          ?? '',
+      colaborador: body.colaborador ?? '',
+      gerente:     body.gerente     ?? '',
+      coordenador: body.coordenador ?? '',
+      supervisor:  body.supervisor  ?? '',
+    }])
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ colaborador: { ...data, _id: data.id } }, { status: 201 })
+}
+
+// ─── PUT /api/colaboradores?id=xxx ───────────────────────────────────────────
+export async function PUT(request) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+
+  const body = await request.json()
+  const db   = supabaseAdmin()
+
+  const { data, error } = await db
+    .from('colaboradores')
+    .update({
+      re:          body.re          ?? '',
+      tt:          body.tt          ?? '',
+      colaborador: body.colaborador ?? '',
+      gerente:     body.gerente     ?? '',
+      coordenador: body.coordenador ?? '',
+      supervisor:  body.supervisor  ?? '',
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ colaborador: { ...data, _id: data.id } })
+}
+
+// ─── DELETE /api/colaboradores?id=xxx ────────────────────────────────────────
+export async function DELETE(request) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+
+  const db = supabaseAdmin()
+  const { error } = await db.from('colaboradores').delete().eq('id', id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
 }
