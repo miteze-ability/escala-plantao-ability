@@ -53,113 +53,45 @@ function dentroDoIntervalo(entrada, de, ate) {
   return true
 }
 
-function CardPlantao({ entrada }) {
-  const cols = entrada.colaboradores ?? (entrada.colaborador ? [entrada.colaborador] : [])
-  const sups = entrada.supervisores ? Array.from(entrada.supervisores).sort() : (entrada.supervisor ? [entrada.supervisor] : [])
-  const isFeriado = FERIADOS.includes(entrada.dataInicio)
-  const cfg = SETOR_CONFIG[entrada.setor] ?? SETOR_CONFIG['CLD']
-
-  return (
-    <div className="rounded-xl border p-4 flex flex-col gap-4 text-sm shadow-lg hover:shadow-xl transition-all"
-      style={{ background: 'linear-gradient(135deg, #18181b 0%, #27272a 100%)', borderColor: cfg.borda }}>
-      
-      {/* CABEÇALHO DO CARD */}
-      <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: cfg.borda }}>
-        <span className={`text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest shadow-sm
-          ${entrada.localidade === 'Capital'  ? 'bg-blue-600 text-white' :
-            entrada.localidade === 'Interior' ? 'bg-green-600 text-white' :
-            'bg-zinc-600 text-white'}`}>
-          {entrada.localidade}
-        </span>
-        {isFeriado && <span className="text-red-400 text-xs font-bold uppercase tracking-wide flex items-center gap-1"><span>★</span> Feriado</span>}
-      </div>
-
-      {/* SUPERVISORES */}
-      {sups.length > 0 && (
-        <div className="bg-zinc-800/80 rounded-lg p-3 border border-zinc-700/50 shadow-inner">
-          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            👔 {sups.length > 1 ? 'Supervisores em Plantão' : 'Supervisor em Plantão'}
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {sups.map((s, i) => (
-              <span key={i} className="text-zinc-100 font-bold text-sm leading-none">• {s}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* COLABORADORES */}
-      <div>
-        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-          👥 {cols.length} {cols.length === 1 ? 'Colaborador' : 'Colaboradores'}
-        </p>
-        <div className="flex flex-col gap-1.5">
-          {cols.map((c, i) => (
-            <span key={i} className="text-zinc-300 font-semibold text-[13px] leading-snug">• {c}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* HORÁRIOS */}
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t mt-1" style={{ borderColor: cfg.borda }}>
-        <div>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1" translate="no">Data Início</p>
-          <p className="text-zinc-300 font-mono text-sm bg-zinc-900/50 px-2 py-1 rounded border border-zinc-800/50 inline-block">{formatDate(entrada.dataInicio)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1" translate="no">Data Fim</p>
-          <p className="text-zinc-300 font-mono text-sm bg-zinc-900/50 px-2 py-1 rounded border border-zinc-800/50 inline-block">{formatDate(entrada.dataFim)}</p>
-        </div>
-        <div className="col-span-2 bg-black/40 rounded-lg p-2.5 flex items-center justify-between border border-zinc-700/50 mt-1">
-          <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider" translate="no">Horário</span>
-          <span className="text-white font-mono font-bold text-[15px]">{entrada.horaInicio} <span className="text-zinc-500 mx-1">→</span> {entrada.horaFim}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
+// CardPlantao removido — a renderização agora é feita diretamente em ColunaSetor
 
 function ColunaSetor({ setor, entradas }) {
   const cfg = SETOR_CONFIG[setor]
   
-  // ── Consolidação das Entradas ──
-  // Agrupa os plantões que têm a mesma localidade, datas e horários
-  const consolidadas = Object.values(entradas.reduce((acc, e) => {
-    const key = `${e.localidade}|${e.dataInicio}|${e.dataFim}|${e.horaInicio}|${e.horaFim}`
-    if (!acc[key]) {
-      acc[key] = {
-        id: key,
-        setor: e.setor,
-        localidade: e.localidade,
-        dataInicio: e.dataInicio,
-        dataFim: e.dataFim,
-        horaInicio: e.horaInicio,
-        horaFim: e.horaFim,
-        colaboradores: [],
-        supervisores: new Set()
-      }
-    }
-    const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
-    acc[key].colaboradores.push(...cols)
-    if (e.supervisor) acc[key].supervisores.add(e.supervisor)
-    return acc
-  }, {})).map(e => {
-    // Ordena os colaboradores em ordem alfabética para ficar organizado
-    e.colaboradores.sort((a,b) => a.localeCompare(b))
-    return e
-  })
+  // ── 1. Painel Supervisores ──
+  const supervisores = [...new Set(entradas.map(e => e.supervisor).filter(Boolean))].sort()
 
-  // Ordena os blocos: Primeiro Capital, depois Interior, e depois por data
-  consolidadas.sort((a, b) => {
-    if (a.localidade !== b.localidade) return a.localidade === 'Capital' ? -1 : 1
-    if (a.dataInicio !== b.dataInicio) return a.dataInicio.localeCompare(b.dataInicio)
-    return a.horaInicio.localeCompare(b.horaInicio)
-  })
+  // ── 2 e 3. Agrupamento por Horário para Capital e Interior ──
+  const agruparPorHorario = (lista) => {
+    const grupos = {}
+    lista.forEach(e => {
+      const key = `${e.dataInicio}|${e.dataFim}|${e.horaInicio}|${e.horaFim}`
+      if (!grupos[key]) {
+        grupos[key] = {
+          dataInicio: e.dataInicio,
+          dataFim: e.dataFim,
+          horaInicio: e.horaInicio,
+          horaFim: e.horaFim,
+          cols: []
+        }
+      }
+      const cols = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
+      grupos[key].cols.push(...cols)
+    })
+    return Object.values(grupos).map(g => {
+      g.cols.sort((a,b) => a.localeCompare(b))
+      return g
+    }).sort((a,b) => a.dataInicio.localeCompare(b.dataInicio) || a.horaInicio.localeCompare(b.horaInicio))
+  }
+
+  const capitalGroups = agruparPorHorario(entradas.filter(e => e.localidade === 'Capital'))
+  const interiorGroups = agruparPorHorario(entradas.filter(e => e.localidade === 'Interior'))
 
   const totalColabs = entradas.reduce((acc, e) => {
     const c = e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])
     return acc + c.length
   }, 0)
+  
   const totalHorasSetor = entradas.reduce((acc, e) => {
     const nColabs = (e.colaboradores ?? (e.colaborador ? [e.colaborador] : [])).length
     return acc + calcularHoras(e) * nColabs
@@ -167,6 +99,7 @@ function ColunaSetor({ setor, entradas }) {
 
   return (
     <div className="flex flex-col min-w-0">
+      {/* HEADER DO SETOR */}
       <div className="rounded-t-xl px-4 py-3 mb-3" style={{ background: 'linear-gradient(135deg, #09090b 0%, #52525b 100%)', borderBottom: `3px solid ${cfg.cor}` }}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -185,21 +118,73 @@ function ColunaSetor({ setor, entradas }) {
         </div>
         <div className="mt-2 flex gap-3 text-xs">
           <span className="bg-black/40 text-white font-medium px-2 py-0.5 rounded-full" translate="no">
-            {consolidadas.length} {consolidadas.length === 1 ? 'bloco' : 'blocos'} de plantão
-          </span>
-          <span className="bg-black/40 text-white font-medium px-2 py-0.5 rounded-full" translate="no">
             {totalColabs} {totalColabs === 1 ? 'colaborador' : 'colaboradores'}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {consolidadas.length === 0 && (
+      <div className="flex flex-col gap-3">
+        {entradas.length === 0 && (
           <div className="rounded-lg border border-zinc-600 px-4 py-6 text-center" style={{background:'linear-gradient(135deg,#27272a,#52525b)'}}>
             <p className="text-zinc-300 text-sm">Nenhum plantão no período</p>
           </div>
         )}
-        {consolidadas.map(e => <CardPlantao key={e.id} entrada={e} />)}
+
+        {/* PAINEL 1: SUPERVISORES */}
+        {supervisores.length > 0 && (
+          <div className="rounded-xl border p-4 shadow-lg bg-zinc-800/80 border-zinc-700/50">
+            <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
+              👔 Supervisores
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {supervisores.map(s => <span key={s} className="text-zinc-100 font-bold text-[13px]">• {s}</span>)}
+            </div>
+          </div>
+        )}
+
+        {/* PAINEL 2: CAPITAL */}
+        {capitalGroups.length > 0 && (
+          <div className="rounded-xl border p-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #18181b 0%, #1e3a8a20 100%)', borderColor: '#1e3a8a80' }}>
+            <div className="flex items-center gap-2 mb-4 border-b border-blue-900/50 pb-3">
+              <span className="bg-blue-600 text-white text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Capital</span>
+            </div>
+            <div className="flex flex-col gap-5">
+              {capitalGroups.map((g, i) => (
+                <div key={i} className="bg-black/20 rounded-lg p-3 border border-blue-900/30">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex flex-wrap gap-2 items-center">
+                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">📅 {formatDate(g.dataInicio)} {g.dataFim && g.dataFim !== g.dataInicio ? `a ${formatDate(g.dataFim)}` : ''}</span>
+                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">⏰ {g.horaInicio} → {g.horaFim}</span>
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {g.cols.map((c, j) => <span key={j} className="text-zinc-200 font-semibold text-[13px]">• {c}</span>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* PAINEL 3: INTERIOR */}
+        {interiorGroups.length > 0 && (
+          <div className="rounded-xl border p-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #18181b 0%, #14532d20 100%)', borderColor: '#14532d80' }}>
+            <div className="flex items-center gap-2 mb-4 border-b border-green-900/50 pb-3">
+              <span className="bg-green-600 text-white text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Interior</span>
+            </div>
+            <div className="flex flex-col gap-5">
+              {interiorGroups.map((g, i) => (
+                <div key={i} className="bg-black/20 rounded-lg p-3 border border-green-900/30">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex flex-wrap gap-2 items-center">
+                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">📅 {formatDate(g.dataInicio)} {g.dataFim && g.dataFim !== g.dataInicio ? `a ${formatDate(g.dataFim)}` : ''}</span>
+                    <span className="bg-zinc-900/80 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700/50">⏰ {g.horaInicio} → {g.horaFim}</span>
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {g.cols.map((c, j) => <span key={j} className="text-zinc-200 font-semibold text-[13px]">• {c}</span>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
